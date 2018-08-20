@@ -1,0 +1,97 @@
+# Rockchip's DuerOS c++ sdk
+# Author : Nyx Zheng <zyh@rock-chips.com>
+#          Hertz <wangh@rock-chips.com>
+
+ifeq ($(BR2_PACKAGE_DUERCLIENTSDK),y)
+
+DUERCLIENTSDK_SITE = $(TOPDIR)/../external/DuerClientSDK
+DUERCLIENTSDK_SITE_METHOD = local
+DUERCLIENTSDK_INSTALL_STAGING = YES
+DUERCLIENTSDK_DEPENDENCIES = libnghttp2 zlib sqlite libcurl portaudio ffmpeg3 \
+	rapidjson wpa_supplicant
+
+DUERCLIENTSDK_BUILD_CONF = $(DUERCLIENTSDK_BUILDDIR)build/build.conf
+DUERCLIENTSDK_OEM_DIR = $(TOPDIR)/../device/rockchip/rk3308/dueros
+DUERCLIENTSDK_OEM_RESOURCE_DIR = $(DUERCLIENTSDK_OEM_DIR)/duer/resources
+
+# Duer DevKit has its special setting,
+# keep same with $(DUERCLIENTSDK_BUILDDIR)build.sh.
+define DUERCLIENTSDK_CONFIGURE_CMDS
+	(mkdir -p $($(PKG)_BUILDDIR) && \
+	cd $($(PKG)_BUILDDIR) && \
+	rm -f CMakeCache.txt && \
+	PATH=$(BR_PATH); \
+	sed -i '/^COMPILER_PATH/d' $(DUERCLIENTSDK_BUILD_CONF); \
+	COMPILER_PATH=$(HOST_DIR);\
+	source $(DUERCLIENTSDK_BUILD_CONF); \
+	$($(PKG)_CONF_ENV) $(BR2_CMAKE) $($(PKG)_SRCDIR) \
+		-DCMAKE_INSTALL_PREFIX="/usr" \
+		-DCMAKE_COLOR_MAKEFILE=ON \
+		-DCMAKE_RULE_MESSAGES=ON \
+		-DCMAKE_INSTALL_MESSAGE=LAZY \
+		-DCMAKE_INSTALL_RPATH=$(join "'\$$,ORIGIN/lib'") \
+		-DCPU_ARCH=$${CPU_ARCH} \
+		-DCMAKE_BUILD_TYPE=$${CMAKE_BUILD_TYPE} \
+		-DCMAKE_C_COMPILER=$${CMAKE_C_COMPILER} \
+		-DCMAKE_CXX_COMPILER=$${CMAKE_CXX_COMPILER} \
+		-DCMAKE_C_FLAGS="$${CMAKE_C_FLAGS}" \
+		-DCMAKE_CXX_FLAGS="$${CMAKE_CXX_FLAGS}" \
+		-DPlatform=$${Platform} \
+		-DPORTAUDIO_LIB_PATH=${TARGET_DIR}/usr/lib/libportaudio.so \
+		-DPORTAUDIO_INCLUDE_DIR=${STAGING_DIR}/usr/include \
+		-DFFMPEG_LIB_PATH=${TARGET_DIR}/usr/lib \
+		-DFFMPEG_INCLUDE_DIR=${STAGING_DIR}/usr/include \
+		-DCURL_LIBRARY=${TARGET_DIR}/usr/lib/libcurl.so \
+		-DCURL_INCLUDE_DIR=${STAGING_DIR}/usr/include \
+		-DSQLITE_LDFLAGS=${TARGET_DIR}/usr/lib/libsqlite3.so \
+		-DSQLITE_INCLUDE_DIRS=${STAGING_DIR}/usr/include \
+		-DKITTAI_KEY_WORD_DETECTOR=$${KITTAI_KEY_WORD_DETECTOR} \
+		-DBUILD_TTS_SDK=$${BUILD_TTS_SDK} \
+		-DBUILD_CRAB_SDK=$${BUILD_CRAB_SDK} \
+		-DPORTAUDIO=ON \
+		-DGSTREAMER_MEDIA_PLAYER=ON \
+		-DBUILD_DOC=OFF \
+		-DBUILD_TEST=OFF \
+		-DBUILD_ONE_LIB=ON \
+		-DOUTPUT_FOR_THIRD=ON \
+		-DDEBUG_FLAG=$${DEBUG_FLAG} \
+		-DDUERLINK_V2=$${DUERLINK_V2} \
+	)
+endef
+
+$(eval $(shell sed -n '/MIC_NUM=/p' $(TOPDIR)/../device/rockchip/rk3308/BoardConfig.mk))
+ifeq ($(MIC_NUM),)
+$(error missing set MIC_NUM in BoardConfig.mk?)
+endif
+
+ifeq ($(call qstrip,$(BR2_ARCH)),arm)
+DUERCLIENTSDK_OEM_BINARIES_DIR = $(DUERCLIENTSDK_OEM_DIR)/arm32
+DUERCLIENTSDK_BUILD_CONF = $(DUERCLIENTSDK_BUILDDIR)build/build32.conf
+DUERCLIENTSDK_EXTRA_RESOURCES_DIR = $(DUERCLIENTSDK_BUILDDIR)resources32
+endif
+ifeq ($(call qstrip,$(BR2_ARCH)),aarch64)
+DUERCLIENTSDK_OEM_BINARIES_DIR = $(DUERCLIENTSDK_OEM_DIR)/arm64
+DUERCLIENTSDK_BUILD_CONF = $(DUERCLIENTSDK_BUILDDIR)build/build64.conf
+DUERCLIENTSDK_EXTRA_RESOURCES_DIR = $(DUERCLIENTSDK_BUILDDIR)resources64
+endif
+
+define DUERCLIENTSDK_PRE_BUILD_HOOK1
+	install -C $(DUERCLIENTSDK_OEM_BINARIES_DIR)/baidu_spil_rk3308_$(call qstrip,$(MIC_NUM))mic/libbd_alsa_audio_client.so \
+	$(TARGET_DIR)/usr/lib
+endef
+
+DUERCLIENTSDK_PRE_BUILD_HOOKS += DUERCLIENTSDK_PRE_BUILD_HOOK1
+
+
+define DUERCLIENTSDK_POST_INSTALL_TARGET_HOOK1
+	install -C $($(PKG)_BUILDDIR)resources/* $(DUERCLIENTSDK_OEM_RESOURCE_DIR)
+	install -C $(DUERCLIENTSDK_EXTRA_RESOURCES_DIR)/* $(DUERCLIENTSDK_OEM_RESOURCE_DIR)
+	install -C $($(PKG)_BUILDDIR)appresources/Rk3308/app_config.json $(DUERCLIENTSDK_OEM_RESOURCE_DIR)
+endef
+
+DUERCLIENTSDK_POST_INSTALL_TARGET_HOOKS += DUERCLIENTSDK_POST_INSTALL_TARGET_HOOK1
+
+$(eval $(cmake-package))
+endif
+
+
